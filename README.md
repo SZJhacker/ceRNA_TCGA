@@ -1,5 +1,8 @@
 # 背景（background）
 下载TCGA数据的表达数据，进行ceRNA分析，不同的目录代表不同的分析
+1. 下载TCGA中的RNA-Seq数据，因为新版的TCGA数据库是用Ensembl id作为基因的命名的，所以这些RNA-Seq基因表达量文件中必然也包含了lncRNA的表达量数据  
+2. 获取TCGA RNA表达量的Ensembl id中属于lncRNA的id  
+3. 从总的RNA表达量文件中提取lncRNA的表达量数据
 
 ## ID_convert
 ### 背景
@@ -11,3 +14,5 @@ MyGene R Client：https://github.com/biothings/mygene.R
 MyGene Python Client：https://github.com/biothings/mygene.py  
 mygene 本质上是一个方便的 Python 模块，通过这个模块我们可以访问 MyGene.info 的基因查询 Web 服务。
 
+### 代码功能
+TCGA数据使用ensemble id作为基因名称，所以ID_convert.py主要是完成对ensemble id的转换，新增的id内容包括：Entrez id, officical gene symbol, gene name。 如果需要增加或替换其他id，可以参考mygene的官方文档对代码中mg.querymany()中的fields进行修改。
