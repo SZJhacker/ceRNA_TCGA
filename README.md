@@ -15,7 +15,11 @@ nohup ./gdc-client download -m gdc_manifest_20200310_115553.txt & # 参考命令
 
 json文件里面记录了每个样本的TCGA编号，我们要根据ensemble id将所有的数据merge到一起。count_merge.py不是很完善，需要一定的手动，需要下载的gz文件放到和count_merge.py一个目录中，然后使用。该脚本使用到json文件中的每个样本的TCGA编号，并且获取该样本对应的压缩包filename，然后将这些文件进行整合。  
 
-*PS: 该代码主要是将数据merge到一起，唯一可能算是困难点的是读取压缩文件的内容，思路上并没有什么难点*
+*PS: 该代码主要是将数据merge到一起，唯一可能算是困难点的是读取压缩文件的内容，思路上并没有什么难点*  
+**代码运行**:
+```bash
+python3 count_merge.py -j metadata.cart.2020-03-10.json -o summary_counts.csv # 参考命令，该文件必须和下载数据的压缩包在同一个文件夹下，后期考虑优化。
+```
 ## 3 ID转换ID_convert
 ### 背景
 ID转换代买最主要的思路就是：**找对原ID和你要注释的ID的对应关系**，对应关系记录在：ftp://ftp.ncbi.nlm.nih.gov/gene/DATA/  
@@ -32,7 +36,11 @@ MyGene Python Client：https://github.com/biothings/mygene.py
 mygene 本质上是一个方便的 Python 模块，通过这个模块我们可以访问 MyGene.info 的基因查询 Web 服务。
 
 ### 代码功能
-TCGA数据使用ensemble id作为基因名称，所以ID_convert.py主要是完成对ensemble id的转换，新增的id内容包括：Entrez id, officical gene symbol, gene name。 如果需要增加或替换其他id，可以参考mygene的官方文档对代码中mg.querymany()中的fields进行修改。
+TCGA数据使用ensemble id作为基因名称，所以ID_convert.py主要是完成对ensemble id的转换，新增的id内容包括：Entrez id, officical gene symbol, gene name。 如果需要增加或替换其他id，可以参考mygene的官方文档对代码中mg.querymany()中的fields进行修改。  
+**代码运行**：
+```bash
+./ID_convert.py -i summary_counts.csv -o converted_expr.csv
+```
 
 ## 3 基因注释
 1. 下载TCGA中的RNA-Seq数据，因为新版的TCGA数据库是用Ensembl id作为基因的命名的，所以这些RNA-Seq基因表达量文件中必然也包含了lncRNA的表达量数据  
@@ -58,12 +66,17 @@ gtf(gene transfer format)，主要是用来对基因进行注释, 文件的格�
 > 8. phase: 仅对注释类型为“CDS”有效，表示起始编码的位置，有效值为0、12. (对于编码蛋白质的CDS来说，本列指定下一个密码子开始的位置。每3个核苷酸翻译一个氨基酸，从0开始，CDS的起始位置，除以3，余数就是这个值，，表示到达下一个密码子需要跳过的碱基个数。该编码区第一个密码子的位置，取值0,1,2。0表示该编码框的第一个密码子第一个碱基位于其5’末端；1表示该编码框的第一个密码子的第一个碱基位于该编码区外；2表示该编码框的第一个密码子的第一、二个碱基位于该编码区外；如果Feature为CDS时，必须指明具体值。)；
 > 9. attributes: 一个包含众多属性的列表，格式为“标签＝值”(tag=value)，以多个键值对组成的注释信息描述，键与值之间用“=”，不同的键值用“；”隔开，一个键可以有多个值，不同值用“,”分割。注意如果描述中包括tab键以及“，= ；”，要用URL转义规则进行转义，如tab键用 代替。键是区分大小写的，以大写字母开头的键是预先定义好的，在后面可能被其他注释信息所调用。
 
-gtf文件python也有相应的包进行解析，如：gtfparse， gffutils等。但是目前好像没有找到比较权威的机构做的，所以打算自己实现。
+gtf文件python也有相应的包进行解析，如：gtfparse， gffutils等。但是目前好像没有哪个是比较权威的机构做的，所以打算自己实现。
 
 我们需要的信息是第9列中的**gene_id, gene_name**和**gene_biotype**。  
 
 annotated_gtf.py的解决思路是：
-1. 利用正则表达是匹配这些内容建立字典，以gene_id为key，gene_id,gene_name和gene_biotype构建的字符串为value
-2. 需要注释文件的dataframe,利用df['ensemble_id'].replace(dict, inplace=True)
+1. 利用正则表达是匹配gtf文件中的注释内容构建元组列表，以gene_id,gene_name和gene_biotype为每个元组的内容
+2. 将这些含有注释信息的元组列表组成gtf_frame
+3. 将含有注释信息的gtf_frame与要注释的文件dataframe进行merge
 
-*PS：该程序的时间复杂度为至少为O(2n),但是时间运行时间比较长，感觉可以进一步优化。*
+*PS：该程序的时间复杂度为至少为O(2n),但是时间运行时间比较长，感觉可以进一步优化。*  
+**运行代码**:
+```bash
+./annotated_gtf.py -i summary_counts.csv -o gene_symbol.csv &
+```
