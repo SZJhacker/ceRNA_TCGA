@@ -80,3 +80,13 @@ annotated_gtf.py的解决思路是：
 ```bash
 ./annotated_gtf.py -i summary_counts.csv -o gene_symbol.csv &
 ```
+## 4 RNA类型分离
+上一部我们完成了基因的注释，其中gene_biotype那一列记录了基因的类型。
+
+我们需要lncRNA或mRNA的表达矩阵，在上述文件中提去相应的gene_biotype那一列就行，这个感觉不用编程写代码，linux命令就可以完成，awk,sed,grep这三大文本操作工具都可以完成，以下是grep命令
+```bash
+egrep 'gene_biotype|lncRNA' gene_symbol.csv > lncRNA_symbol.csv # egrep
+egrep 'gene_biotype|protein_coding' gene_symbol.csv > mRNA_symbol.csv
+```
+
+
