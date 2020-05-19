@@ -1,7 +1,13 @@
-# 背景（background）
+[TOC]
+# 前沿
+
+目前ceRNA的分析集中在癌症方向，在作物中或者动物中比较少，如果想应用在其他的物种中，必须要要透彻的理解数据和每一步分析的方法和意义。
+
+# 知识背景（background）
 竞争性内源RNA（ceRNA）是近几年来备受学术界关注的对象，它代表了一种全新的基因表达调控模式，相比miRNA调控网络，ceRNA调控网络更为精细和复杂，涉及更多的RNA分子，包括mRNA、编码基因的假基因、长链非编码RNA和miRNA等，它为科研工作者提供一个全新的视角进行转录组研究，有助于更全面、深入地解释一些生物学现象。  
 [TCGA](https://portal.gdc.cancer.gov/)（The cancer genome atlas，癌症基因组图谱）由 National Cancer Institute(NCI，美国国家癌症研究所) 和 National Human Genome Research Institute（NHGRI，美国国家人类基因组研究所）于 2005 年联合启动的项目， 收录了各种人类癌症（包括亚型在内的肿瘤）的临床数据，基因组变异，mRNA表达，miRNA表达，甲基化等数据，是癌症研究者很重要的数据来源。TCGA应用高通量基因组分析技术，通过更好地了解这种疾病的遗传基础，提高了我们诊断，治疗和预防癌症的能力。
 
+# 数据分析流程
 ## 1 数据下载
 本次分析的数据全部是来源于TCGA，TCGA官网提供了很好的[数据下载指南](https://docs.gdc.cancer.gov/Data_Transfer_Tool/Users_Guide/Preparing_for_Data_Download_and_Upload/), 不喜欢看英文的，中文教程可以参考知乎上的这篇文章：https://zhuanlan.zhihu.com/p/63109401    
 
@@ -13,7 +19,7 @@ nohup ./gdc-client download -m gdc_manifest_20200310_115553.txt & # 参考命令
 ## 2 数据整合
 这一步的目的很简单，就是将之前下载的数据整合到一起，所以实现的方式很多。  
 
-json文件里面记录了每个样本的TCGA编号，我们要根据ensemble id将所有的数据merge到一起。count_merge.py不是很完善，需要一定的手动，需要下载的gz文件放到和count_merge.py一个目录中，然后使用。该脚本使用到json文件中的每个样本的TCGA编号，并且获取该样本对应的压缩包filename，然后将这些文件进行整合。  
+json文件里面记录了每个样本的TCGA的[barcode编号](https://docs.gdc.cancer.gov/Encyclopedia/pages/TCGA_Barcode/)，我们要根据ensemble id将所有的数据merge到一起。count_merge.py不是很完善，需要一定的手动，需要下载的gz文件放到和count_merge.py一个目录中，然后使用。该脚本使用到json文件中的每个样本的TCGA编号，并且获取该样本对应的压缩包filename，然后将这些文件进行整合。  
 
 *PS: 该代码主要是将数据merge到一起，唯一可能算是困难点的是读取压缩文件的内容，思路上并没有什么难点*  
 **代码运行**:
@@ -85,8 +91,79 @@ annotated_gtf.py的解决思路是：
 
 我们需要lncRNA或mRNA的表达矩阵，在上述文件中提去相应的gene_biotype那一列就行，这个感觉不用编程写代码，linux命令就可以完成，awk,sed,grep这三大文本操作工具都可以完成，以下是grep命令
 ```bash
-egrep 'gene_biotype|lncRNA' gene_symbol.csv > lncRNA_symbol.csv # egrep
+egrep 'gene_biotype|lncRNA' gene_symbol.csv > lncRNA_symbol.csv # egrep基本等同于grep -E,使用扩展正则
 egrep 'gene_biotype|protein_coding' gene_symbol.csv > mRNA_symbol.csv
 ```
 
+## 5 差异基因分析
+### 背景知识
+泊松分布是二项分布n很大而p很小时的一种极限形式, 泊松分布理解可参考知乎上“[甜心小馒头](https://www.zhihu.com/question/26441147/answer/429569625)”的讲解示例。
+### R代码分析
+目前了解的还不是很透彻，虽然完成了差异分析，但是还是有盲点，后期会更新这部分的心得
+```R
+library("TCGAbiolinks")
+library('limma')
+library('edgeR')
+library('ggplot2')
+library('ggpubr')
+library('ggthemes')
+library('pheatmap')
 
+setwd('H:/my_python/ceRNA') #设置工作目录
+rt=read.csv('mRNA_symbol.csv',header = T,check.names = F) #读取表达矩
+rt=as.matrix(rt) #将dataframe转化为matrix
+rownames(rt) = rt[,2] #获取基因名称
+exp = rt[,4:ncol(rt)] #组成新的表达矩阵
+barcode=colnames(exp) #获取所有样本的barcode
+dataSmTP <- TCGAquery_SampleTypes(barcode = barcode,typesample = "TP") #获取癌症组织的barcode
+dataSmNT <- TCGAquery_SampleTypes(barcode = barcode, typesample = "NT") #获取为正常组织的barcode
+exp = exp[,c(dataSmNT,dataSmTP)] #将列表按照类型重新排列，为下一步分组做准备
+dimnames=list(rownames(exp),colnames(exp))
+data=matrix(as.numeric(as.matrix(exp)),nrow=nrow(exp),dimnames=dimnames)
+data=avereps(data) #将相同名称的基因表达量合并取均值
+
+group=c(rep("normal",3),rep("tumor",304)) #按照癌症和正常样品数目修改
+design <- model.matrix(~group)
+y <- DGEList(counts=data,group=group)# 创建DGEList类型变量
+keep <- filterByExpr(y)
+y <- y[keep,,keep.lib.size=FALSE] #将低表达基因过滤掉，从生物学角度，有生物学意义的基因的表达量必须高于某一个阈值。从统计学角度上， low count的数据不太可能有显著性差异，而且在多重试验矫正阶段还会拖后腿。keep.lib.size=FALSE表示重新计算文库大小。
+y <- calcNormFactors(y)# 计算标准化因子
+y <- estimateCommonDisp(y)# 计算离散度
+y <- estimateTagwiseDisp(y)
+et <- exactTest(y,pair = c("normal","tumor")) # 显著性检验
+ordered_tags <- topTags(et, n=100000) # n=100000是为了输出所以基因
+
+allDiff=ordered_tags$table
+allDiff=allDiff[is.na(allDiff$FDR)==FALSE,]
+newData=y$counts
+
+# 保存差异分析结果
+write.csv(allDiff,file="case_vs_control_mRNA_edgerOut.csv",quote=F)
+etSig <- allDiff[which(allDiff$PValue < 0.05 & abs(allDiff$logFC) > 1),] # 差异基因筛选
+etSig[which(etSig$logFC > 0), "up_down"] <- "Up" # 加入一列，up_down 体现上调信息
+etSig[which(etSig$logFC < 0), "up_down"] <- "Down" # 加入一列，up_down 体现上下调信息
+write.csv(etSig,file="case_vs_control_P0.05_FC1_mRNA_edgerOut.csv",quote = F)
+write.csv(newData,file="mRNA_normalizeExp.csv",quote=F) #输出所有基因校正后的表达值
+write.csv(newData[rownames(etSig),],file="mRNA_diffExp.csv",quote=F) #输出差异基因校正后的表达值
+
+##newvolcano
+allDiff$logP <- -log10(allDiff$FDR) #对矫正后的P值进行log10转换
+allDiff <- cbind(symbol=rownames(allDiff),allDiff)
+allDiff$Group = "not-signigicant" #增加group
+allDiff$Group[which((allDiff$FDR < 0.05) & (allDiff$logFC > 2))]="up-regulated" #设置上调基因
+allDiff$Group[which((allDiff$FDR < 0.05) & (allDiff$logFC < -2))]="down-regulated" #设置下调基因
+
+allDiff$Label="" #增加label列，对后期要展示基因加标签
+allDiff <- allDiff[order(allDiff$FDR),]
+upgenes <- head(allDiff$symbol[which(allDiff$Group=='up-regulated')],10) #上调基因中FDR最小的10个
+downgenes <- head(allDiff$symbol[which(allDiff$Group=='down-regulated')],10) #下调基因中FDR最小的10个
+deg.top10.genes <- c(as.character(upgenes),as.character(downgenes)) #将前十上调基因和下调基因合并
+allDiff$Label[match(deg.top10.genes,allDiff$symbol)] <- deg.top10.genes
+
+ggscatter(allDiff,x="logFC", y="logP", color = "Group",palette = c('#2f5688','#BBBBBB','#CC0000'),size = 1,label = allDiff$Label,font.label = 8,repel = T,xlab = 'log2FoldChange',ylab = "-log10(Adjust P-value")+theme_base()
+ggsave("mRNA_regulate.eps")
+dev.off()
+
+## heatmap
+pheatmap(newData[rownames(etSig),], scale="row")
+```
