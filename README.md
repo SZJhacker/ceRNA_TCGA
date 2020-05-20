@@ -4,7 +4,10 @@
 目前ceRNA的分析集中在癌症方向，在作物中或者动物中比较少，如果想应用在其他的物种中，必须要要透彻的理解数据和每一步分析的方法和意义。
 
 # 知识背景（background）
-竞争性内源RNA（ceRNA）是近几年来备受学术界关注的对象，它代表了一种全新的基因表达调控模式，相比miRNA调控网络，ceRNA调控网络更为精细和复杂，涉及更多的RNA分子，包括mRNA、编码基因的假基因、长链非编码RNA和miRNA等，它为科研工作者提供一个全新的视角进行转录组研究，有助于更全面、深入地解释一些生物学现象。  
+竞争性内源RNA（ceRNA）是近几年来备受学术界关注的对象，它代表了一种全新的基因表达调控模式，相比miRNA调控网络，ceRNA调控网络更为精细和复杂，涉及更多的RNA分子，包括mRNA、编码基因的假基因、长链非编码RNA和miRNA等，它为科研工作者提供一个全新的视角进行转录组研究，有助于更全面、深入地解释一些生物学现象。 
+
+ceRNA全称competing endogenous RNA，是一种能够竞争结合RNA的作用元件。通常lncRNA和circRNA会竞争结合miRNA，我们一般把lncRNA和circRNA可以称作ceRNA。ceRNA调控网络全称ceRNA regulation network，指的是有ceRNA参与的整个调控网络。而ceRNA分析指的是对整个ceRNA调控网络进行分析。一般有circRNA-miRNA-mRNA分析或lncRNA-miRNA-mRNA分析。 ceRNA调控网络分析中目前包含四种RNA，即mRNA、miRNA、lncRNA和circRNA。其中**miRNA处于调控的核心地位**，当miRNA被lncRNA或circRNA这类ceRNA竞争结合时，受miRNA调控的mRNA转录水平会上升。ceRNA调控机制作为普遍存在的现象，但是并非任何mRNA，lncRNA，circRNA都能够具有MRE，对于不具有共有MRE的mRNA，lncRNA，circRNA来说，就不存在ceRNA调控机制。也就是说有些lncRNA、mRNA和circRNA很有可能是单身狗。
+
 [TCGA](https://portal.gdc.cancer.gov/)（The cancer genome atlas，癌症基因组图谱）由 National Cancer Institute(NCI，美国国家癌症研究所) 和 National Human Genome Research Institute（NHGRI，美国国家人类基因组研究所）于 2005 年联合启动的项目， 收录了各种人类癌症（包括亚型在内的肿瘤）的临床数据，基因组变异，mRNA表达，miRNA表达，甲基化等数据，是癌症研究者很重要的数据来源。TCGA应用高通量基因组分析技术，通过更好地了解这种疾病的遗传基础，提高了我们诊断，治疗和预防癌症的能力。
 
 # 数据分析流程
@@ -99,7 +102,7 @@ egrep 'gene_biotype|protein_coding' gene_symbol.csv > mRNA_symbol.csv
 ### 背景知识
 泊松分布是二项分布n很大而p很小时的一种极限形式, 泊松分布理解可参考知乎上“[甜心小馒头](https://www.zhihu.com/question/26441147/answer/429569625)”的讲解示例。
 ### R代码分析
-目前了解的还不是很透彻，虽然完成了差异分析，但是还是有盲点，后期会更新这部分的心得
+目前了解的还不是很透彻，虽然完成了差异分析，但是还是有盲点，后期会更新这部分的心得。目前R在这方面做的应该是比较多的，其他的编程语言有没有相应的包替换R完成差异表达分析还没了解，因为这个不仅涉及到常用的P值检验或者矫正，更多的是对样本基因表达均一化的处理思路，例如edgeR包就有对这方面的
 ```R
 library("TCGAbiolinks")
 library('limma')
@@ -167,3 +170,12 @@ dev.off()
 ## heatmap
 pheatmap(newData[rownames(etSig),], scale="row")
 ```
+
+## 6 ceRNA网络构建
+### 构建思路（lncRNA-miRNA-mRNA）
+1. 筛选差异表达的lncRNA（上个步骤中已经完成）
+2. 靶定lncRNAs的miRNA预测。可以通过miRcode和starBase上旋lncRNA潜在的MREs
+3. miRNA靶定的mRNA预测。通过miRTarBase预测。
+# Reference
+《[ceRNA网络构建](https://cloud.tencent.com/developer/news/398064)》  
+《[ceRNA network构建笔记](https://www.jianshu.com/p/b7e4830c0b01)》
