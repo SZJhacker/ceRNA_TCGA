@@ -6,7 +6,9 @@
 # 知识背景（background）
 竞争性内源RNA（ceRNA）是近几年来备受学术界关注的对象，它代表了一种全新的基因表达调控模式，相比miRNA调控网络，ceRNA调控网络更为精细和复杂，涉及更多的RNA分子，包括mRNA、编码基因的假基因、长链非编码RNA和miRNA等，它为科研工作者提供一个全新的视角进行转录组研究，有助于更全面、深入地解释一些生物学现象。 
 
-ceRNA全称competing endogenous RNA，是一种能够竞争结合RNA的作用元件。通常lncRNA和circRNA会竞争结合miRNA，我们一般把lncRNA和circRNA可以称作ceRNA。ceRNA调控网络全称ceRNA regulation network，指的是有ceRNA参与的整个调控网络。而ceRNA分析指的是对整个ceRNA调控网络进行分析。一般有circRNA-miRNA-mRNA分析或lncRNA-miRNA-mRNA分析。 ceRNA调控网络分析中目前包含四种RNA，即mRNA、miRNA、lncRNA和circRNA。其中**miRNA处于调控的核心地位**，当miRNA被lncRNA或circRNA这类ceRNA竞争结合时，受miRNA调控的mRNA转录水平会上升。ceRNA调控机制作为普遍存在的现象，但是并非任何mRNA，lncRNA，circRNA都能够具有MRE，对于不具有共有MRE的mRNA，lncRNA，circRNA来说，就不存在ceRNA调控机制。也就是说有些lncRNA、mRNA和circRNA很有可能是单身狗。
+ceRNA全称competing endogenous RNA，是一种能够竞争结合RNA的作用元件。通常lncRNA和circRNA会竞争结合miRNA，我们一般把lncRNA和circRNA可以称作ceRNA。ceRNA调控网络全称ceRNA regulation network，指的是有ceRNA参与的整个调控网络。而ceRNA分析指的是对整个ceRNA调控网络进行分析。一般有circRNA-miRNA-mRNA分析或lncRNA-miRNA-mRNA分析。 ceRNA调控网络分析中目前包含四种RNA，即mRNA、miRNA、lncRNA和circRNA。其中**miRNA处于调控的核心地位**，当miRNA被lncRNA或circRNA这类ceRNA竞争结合时，受miRNA调控的mRNA转录水平会上升。ceRNA调控机制作为普遍存在的现象，但是并非任何mRNA，lncRNA，circRNA都能够具有MRE，对于不具有共有MRE的mRNA，lncRNA，circRNA来说，就不存在ceRNA调控机制。
+
+
 
 [TCGA](https://portal.gdc.cancer.gov/)（The cancer genome atlas，癌症基因组图谱）由 National Cancer Institute(NCI，美国国家癌症研究所) 和 National Human Genome Research Institute（NHGRI，美国国家人类基因组研究所）于 2005 年联合启动的项目， 收录了各种人类癌症（包括亚型在内的肿瘤）的临床数据，基因组变异，mRNA表达，miRNA表达，甲基化等数据，是癌症研究者很重要的数据来源。TCGA应用高通量基因组分析技术，通过更好地了解这种疾病的遗传基础，提高了我们诊断，治疗和预防癌症的能力。
 
@@ -169,13 +171,29 @@ dev.off()
 
 ## heatmap
 pheatmap(newData[rownames(etSig),], scale="row")
+ggsave("mRNA_heatmap.eps")
+dev.off()
 ```
 
 ## 6 ceRNA网络构建
 ### 构建思路（lncRNA-miRNA-mRNA）
+
 1. 筛选差异表达的lncRNA（上个步骤中已经完成）
-2. 靶定lncRNAs的miRNA预测。可以通过miRcode和starBase上旋lncRNA潜在的MREs
+2. 靶定lncRNAs的miRNA预测。可以通过miRcode和starBase上找lncRNA潜在的MREs
 3. miRNA靶定的mRNA预测。通过miRTarBase预测。
+
+### 执行步骤
+1. 提取miRcode数据空中miRNA靶定的lncRNA。
+```bash
+ for i in $(cut -d , -f 1 lncRNA_diffExp.csv );do grep $i mircode_highconsfamilies.txt >> lncRNA_mircode.tsv;done #差异表达lncRNA与miRNA的关系对找出来
+```
+*ps:mircode_highconsfamilies.txt是miRcode里面的数据，可以从miRcode官网下载。该方法运行较慢，要对后面的文件进行多次遍历，后期考虑更快的方法。*  
+2. 差异lncRNA和差异miRNA的关系对（lncRNA-miRNA）
+```bash
+for i in $(awk -F ',' '{print $1}' miRNA_diffExp.csv);do grep -i ${i#*-} lncRNA_mircode.tsv >> lncRNA_miRNA.tsv;done #在差异表达的lnRNA与miRNA的关系对文件中中找出显著差异表达的关系对
+```
+*ps:不想动脑子的方法，时间复杂度高，为O(n\*n),有生之年或许考虑优化。*  
+3. 将miRNA前体转换成成熟miRNA，TCGA中miRNA的表达矩阵中miRNA为前体
 # Reference
 《[ceRNA网络构建](https://cloud.tencent.com/developer/news/398064)》  
 《[ceRNA network构建笔记](https://www.jianshu.com/p/b7e4830c0b01)》
