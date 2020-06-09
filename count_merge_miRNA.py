@@ -5,6 +5,15 @@ from argparse import ArgumentParser
 import pandas as pd
 import json
 
+def read_count(sample):
+    submitter_id, file_name = sample['associated_entities'][0]['entity_submitter_id'].strip(), sample['file_name'].strip()
+    raw_frame = pd.read_table(file_name, sep='\t', usecols=['miRNA_region', 'read_count']).rename(columns={'read_count':submitter_id})
+
+    # miRNA中的数据只需要保留mature miRNA的表达矩阵
+    mature_miRNA = raw_frame[raw_frame['miRNA_region'].str.contains('mature')]
+    uni_mature_miRNA = mature_miRNA.groupby('miRNA_region', as_index=False).sum()
+    uni_mature_miRNA['miRNA_region'] = uni_mature_miRNA['miRNA_region'].str.replace("mature,", "")
+    return uni_mature_miRNA
 
 def main():
     parser = ArgumentParser(description="Merging the gene counts record from gzip file, which must be in the same directory as this script ")
@@ -15,15 +24,13 @@ def main():
     with open(args.jsonfile, 'r') as jsonfile:
         jsonfile_iter = iter(json.load(jsonfile))
         sample_first = next(jsonfile_iter)
-        submitter_id, file_name = sample_first['associated_entities'][0]['entity_submitter_id'].strip(), sample_first['file_name'].strip()
-        init_frame = pd.read_table(file_name, sep='\t', usecols=['miRNA_ID', 'read_count']).rename(columns={'read_count':submitter_id})
+        init_frame = read_count(sample_first)
+        # print(init_frame.head())
 
         for sample_next_info in jsonfile_iter:
-            submitter_id, file_name = sample_next_info['associated_entities'][0]['entity_submitter_id'].strip(), sample_next_info[
-                'file_name'].strip()
-            sample_next = pd.read_table(file_name, sep='\t', usecols=['miRNA_ID', 'read_count']).rename(columns={'read_count':submitter_id})
-            init_frame = pd.merge(init_frame, sample_next, on=['miRNA_ID'])
-        init_frame.to_csv(args.countsfile, index=False)
+            sample_next = read_count(sample_next_info)
+            init_frame = pd.merge(init_frame, sample_next, on=['miRNA_region'])
+        init_frame.to_csv(args.countsfile,index=False)
 
 
 if __name__ == '__main__':
