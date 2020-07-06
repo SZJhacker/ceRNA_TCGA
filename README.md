@@ -104,7 +104,8 @@ egrep 'gene_biotype|protein_coding' gene_symbol.csv > mRNA_symbol.csv
 ### 背景知识
 泊松分布是二项分布n很大而p很小时的一种极限形式, 泊松分布理解可参考知乎上“[甜心小馒头](https://www.zhihu.com/question/26441147/answer/429569625)”的讲解示例。
 ### R代码分析
-目前了解的还不是很透彻，虽然完成了差异分析，但是还是有盲点，后期会更新这部分的心得。目前R在这方面做的应该是比较多的，其他的编程语言有没有相应的包替换R完成差异表达分析还没了解，因为这个不仅涉及到常用的P值检验或者矫正，更多的是对样本基因表达均一化的处理思路，例如edgeR包就有对这方面的
+目前了解的还不是很透彻，虽然完成了差异分析，但是还是有盲点，后期会更新这部分的心得。目前R在这方面做的应该是比较多的，其他的编程语言有没有相应的包替换R完成差异表达分析还没了解，因为这个不仅涉及到常用的P值检验或者矫正，更多的是对样本基因表达均一化的处理思路，例如edgeR包就有对这方面的.
+
 ```R
 library("TCGAbiolinks")
 library('limma')
@@ -113,9 +114,17 @@ library('ggplot2')
 library('ggpubr')
 library('ggthemes')
 library('pheatmap')
+library('miRBaseVersions.db'
 
 setwd('H:/my_python/ceRNA') #设置工作目录
 rt=read.csv('mRNA_symbol.csv',header = T,check.names = F) #读取表达矩
+
+# miRNA的ID转换，mRNA之前已经完成，不需要这一步
+name <- rt[,1]
+iterms <- select(miRBaseVersions.db,keys = name,keytype = "VW-MIMAT-21.0", columns = c('ACCESSION','NAME','VERSION'))
+rt <- cbind(iterms[,1:2], rt[,2:ncol(rt)])
+
+
 rt=as.matrix(rt) #将dataframe转化为matrix
 rownames(rt) = rt[,2] #获取基因名称
 exp = rt[,4:ncol(rt)] #组成新的表达矩阵
@@ -144,11 +153,11 @@ newData=y$counts
 
 # 保存差异分析结果
 write.csv(allDiff,file="case_vs_control_mRNA_edgerOut.csv",quote=F)
-etSig <- allDiff[which(allDiff$PValue < 0.05 & abs(allDiff$logFC) > 1),] # 差异基因筛选
+write.csv(newData,file="mRNA_normalizeExp.csv",quote=F) #输出所有基因校正后的表达值
+etSig <- allDiff[which(allDiff$PValue < 0.05 & abs(allDiff$logFC) > 2),] # 差异基因筛选
 etSig[which(etSig$logFC > 0), "up_down"] <- "Up" # 加入一列，up_down 体现上调信息
 etSig[which(etSig$logFC < 0), "up_down"] <- "Down" # 加入一列，up_down 体现上下调信息
-write.csv(etSig,file="case_vs_control_P0.05_FC1_mRNA_edgerOut.csv",quote = F)
-write.csv(newData,file="mRNA_normalizeExp.csv",quote=F) #输出所有基因校正后的表达值
+write.csv(etSig,file="case_vs_control_P0.05_FC2_mRNA_edgerOut.csv",quote = F)
 write.csv(newData[rownames(etSig),],file="mRNA_diffExp.csv",quote=F) #输出差异基因校正后的表达值
 
 ##newvolcano
@@ -176,24 +185,70 @@ dev.off()
 ```
 
 ## 6 ceRNA网络构建
+### 6.1 背景知识
+#### 6.1.1 miRNA命名规则
+需要了解miRNA的命名规则  
+
+#### 6.1.2 miRNA靶基因分析
+鉴定miRNA靶基因的最常用方法是依赖计算机算法，如TargetScan、MiRanda和PicTar。它们预测miRNA种子区的结合。**种子区**（seed region）指的是miRNA上进化最为保守的片段，从第2个到第8个核苷酸，通常与mRNA 3’-UTR上的靶位点完全互补，是miRNA的特异性和与靶标结合的重要决定因素。靶基因预测主要遵循以下几个基本原则：
+1. miRNA 与其靶位点的互补性；
+2. miRNA 靶位点在不同物种之间的保守性；
+3. miRNA-mRNA 双链之间的热稳定性；
+4. miRNA 靶位点处不应有复杂的二级结构等。
+
+### 6.2 ceRNA网络构建
+
+核心问题：找出差异表达的mRNA，lncRNA以及miRNA之间的关系  
+主要使用到的R包有：multiMiR（预测成熟miRNA的靶基因）和miRBaseVersions.db(miRNA前体转换为成熟的miRNA，如果数据中的miRNA是成熟体无须此步骤)
+
 ### 构建思路（lncRNA-miRNA-mRNA）
-
 1. 筛选差异表达的lncRNA（上个步骤中已经完成）
-2. 靶定lncRNAs的miRNA预测。可以通过miRcode和starBase上找lncRNA潜在的MREs
-3. miRNA靶定的mRNA预测。通过miRTarBase预测。
+2. 靶定lncRNAs的miRNA预测。(尝试LncRNA2Target)
+3. miRNA（成熟miRNA）靶定的mRNA预测。(使用R里面的multiMiR)
+4. 差异筛选的mRNA和预测靶定的mRNA去交集。
 
-### 执行步骤
-1. 提取miRcode数据空中miRNA靶定的lncRNA。
+#### 6.2.1 miRNA与mRNA互作分析
+[multiMiR](http://bioconductor.org/packages/release/bioc/vignettes/multiMiR/inst/doc/multiMiR.html)包使得能够从在14个的外部数据库的miRNA靶相互作用的检索，而无需访问所有这些数据库。
+
+```R
+library(multiMiR)
+
+setwd('H:/my_python/ceRNA') #设置工作目录
+miRrt = read.csv('miRNA_diffExp.csv',header = T, row.names = 1,check.names = F) #读取表达矩
+mRrt = read.csv("mRNA_diffExp.csv", header = T, row.names = 1,check.names = F)
+
+mirna = rownames(miRrt)
+mRna = rownames(mRrt)
+
+# 获取数据库中
+multimir_results <- get_multimir(org     = 'hsa',
+                                 mirna   = mirna,
+                                 target = mRna,
+                                 table   = 'validated',
+                                 summary = TRUE,
+                                 predicted.cutoff.type = "p",
+                                 predicted.cutoff      = 10
+                                 )
+
+inter_data = multimir_results@data
+write.csv(inter_data, file = "miR_mRNA_interac.csv",quote=F)
+
+```
+
+### ~~执行步骤~~
+~~此步骤作废，该教程使用starBase v2.0已经停止访问，所需要的注释文件无法下载。有些步骤可能对一些分析有参考作用，故保留该部分内容~~
+1. ~~提取miRcode数据空中miRNA靶定的lncRNA。~~
 ```bash
  for i in $(cut -d , -f 1 lncRNA_diffExp.csv );do grep $i mircode_highconsfamilies.txt >> lncRNA_mircode.tsv;done #差异表达lncRNA与miRNA的关系对找出来
 ```
-*ps:mircode_highconsfamilies.txt是miRcode里面的数据，可以从miRcode官网下载。该方法运行较慢，要对后面的文件进行多次遍历，后期考虑更快的方法。*  
-2. 差异lncRNA和差异miRNA的关系对（lncRNA-miRNA）
+~~*ps:mircode_highconsfamilies.txt是miRcode里面的数据，可以从miRcode官网下载。该方法运行较慢，要对后面的文件进行多次遍历，后期考虑更快的方法。*~~  
+1. ~~差异lncRNA和差异miRNA的关系对（lncRNA-miRNA）~~
 ```bash
 for i in $(awk -F ',' '{print $1}' miRNA_diffExp.csv);do grep -i ${i#*-} lncRNA_mircode.tsv >> lncRNA_miRNA.tsv;done #在差异表达的lnRNA与miRNA的关系对文件中中找出显著差异表达的关系对
 ```
-*ps:不想动脑子的方法，时间复杂度高，为O(n\*n),有生之年或许考虑优化。*  
-3. 将miRNA前体转换成成熟miRNA，TCGA中miRNA的表达矩阵中miRNA为前体
+~~*ps:不想动脑子的方法，时间复杂度高，为O(n\*n),有生之年或许考虑优化。*~~  
+3. ~~将miRNA前体转换成成熟miRNA，TCGA中miRNA的表达矩阵中miRNA为前体~~
+
 # Reference
 《[ceRNA网络构建](https://cloud.tencent.com/developer/news/398064)》  
 《[ceRNA network构建笔记](https://www.jianshu.com/p/b7e4830c0b01)》
